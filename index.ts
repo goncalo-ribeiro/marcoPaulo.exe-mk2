@@ -17,7 +17,18 @@ setupAudioPlayer();
 import {validateURL} from 'ytdl-core';
 import { exec as ytdl } from 'youtube-dl-exec';
 
-const { token, nvideaID, tarasManiasID } = require('../auth.json');
+let token, nvideaID, tarasManiasID ;
+try {
+    const auth = require('../auth.json');
+    token = auth.token;
+    nvideaID = auth.nvideaID;
+    tarasManiasID = auth.tarasManiasID;
+} catch (error) {
+    console.log(error)
+    token = process.env.token;
+    nvideaID = process.env.nvideaID;
+    tarasManiasID = process.env.tarasManiasID;
+}
 
 let queuedVideos: YTVideos[] = [];
 
@@ -135,7 +146,8 @@ function playNextVideo (connection: VoiceConnection){
         {
             output: '-',
             // quiet: true,
-            format: 'bestaudio',
+            format: 'ba',
+            // audioFormat: 'mp3',
             verbose: true,
             // limitRate: '1M',
         }
