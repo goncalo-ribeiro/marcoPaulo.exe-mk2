@@ -1,0 +1,8 @@
+[youtube] tXtATeQ7GKg: Downloading webpage
+[youtube] tXtATeQ7GKg: Downloading android player API JSON
+[info] tXtATeQ7GKg: Downloading 1 format(s): 251
+[download] Destination: -
+[download]   0.0% of    4.19MiB at  331.09KiB/s ETA 00:12[download]   0.1% of    4.19MiB at  993.28KiB/s ETA 00:04[download]   0.2% of    4.19MiB at  349.26KiB/s ETA 00:12[download]   0.3% of    4.19MiB at  748.40KiB/s ETA 00:05[download]   0.7% of    4.19MiB at  860.19KiB/s ETA 00:04[download]   1.5% of    4.19MiB at  939.77KiB/s ETA 00:04[download]   3.0% of    4.19MiB at  984.20KiB/s ETA 00:04[download]   5.9% of    4.19MiB at 1002.47KiB/s ETA 00:04[download]  11.9% of    4.19MiB at 1016.27KiB/s ETA 00:03[download]  23.9% of    4.19MiB at  998.73KiB/s ETA 00:03[download]  46.8% of    4.19MiB at  206.53KiB/s ETA 00:11[download]  58.2% of    4.19MiB at   69.76KiB/s ETA 00:25[download]  63.9% of    4.19MiB at   27.76KiB/s ETA 00:55
+
+ERROR: unable to write data: [Errno 32] Broken pipe
+
