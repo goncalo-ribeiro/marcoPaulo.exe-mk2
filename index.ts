@@ -28,21 +28,23 @@ client.login(token);
 client.on('ready', async function (evt) {
     console.log('Ready!');
 
-    const subprocess = ytdl('https://www.youtube.com/watch?v=PzWRfByYcns', {
-        // format: 'bestaudio[ext=webm+acodec=opus+asr=48000]/bestaudio',
-       // dumpSingleJson: true
-    })
+    // const subprocess = ytdl('https://www.youtube.com/watch?v=4s7uc_j1Sm0', {
+    //     format: 'bestaudio',
+    //     // format: 'bestaudio[ext=webm+acodec=opus+asr=48000]/bestaudio',
+    //    // dumpSingleJson: true
+    // })
 
-    if (!subprocess.stdout) {
-        console.log('no process.stdout')
-        return;
-    }
-    subprocess.stdout.pipe(fs.createWriteStream('stdout.txt'))
-    if (!subprocess.stderr) {
-        console.log('no process.stdout')
-        return;
-    }
-    subprocess.stderr.pipe(fs.createWriteStream('stderr.txt'))
+
+    // if (!subprocess.stdout) {
+    //     console.log('no process.stdout')
+    //     return;
+    // }
+    // subprocess.stdout.pipe(fs.createWriteStream('stdout.txt'))
+    // if (!subprocess.stderr) {
+    //     console.log('no process.stdout')
+    //     return;
+    // }
+    // subprocess.stderr.pipe(fs.createWriteStream('stderr.txt'))
 
     // registerSlashCommands(client.user?.id, nvideaID, token);
 })
@@ -126,31 +128,39 @@ async function addURLToQueue(interaction : ChatInputCommandInteraction){
 }
 
 function playNextVideo (connection: VoiceConnection){
+    let start = Date.now();
+    console.log(Date.now() - start + ': starting next video...')
     const process = ytdl(
         queuedVideos[0].url,
         {
             output: '-',
             // quiet: true,
             format: 'bestaudio',
-            limitRate: '1M',
+            verbose: true,
+            // limitRate: '1M',
         }
-        // ,{ stdio: ['ignore', 'pipe', 'ignore'] },
+        ,{ stdio: ['ignore', 'pipe', 'ignore'] },
     );
+    console.log(Date.now() - start + ': video loaded.')
     if (!process.stdout) {
         console.log('no process.stdout')
         return;
     }
-    process.stdout.pipe(fs.createWriteStream('stdout.txt'))
-    if (!process.stderr) {
-        console.log('no process.stdout')
-        return;
-    }
-    process.stderr.pipe(fs.createWriteStream('stderr.txt'))
+    // process.stdout.pipe(fs.createWriteStream('stdout.txt'))
+    // if (!process.stderr) {
+    //     console.log('no process.stdout')
+    //     return;
+    // }
+    // process.stderr.pipe(fs.createWriteStream('stderr.txt'))
 
+    console.log(Date.now() - start + ': creating stream...')
     const stream = process.stdout;
     // createAudioResource(probe.stream, { metadata: this, inputType: probe.type })
+    console.log(Date.now() - start + ': creating audio resource...')
     const audioResource = createAudioResource(stream);
+    console.log(Date.now() - start + ': playing audio resource')
     player.play(audioResource);
+    console.log(Date.now() - start + ': subscribing player')
     connection.subscribe(player);
 }
 
