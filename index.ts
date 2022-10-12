@@ -2,7 +2,7 @@ import fs from 'fs';
 import {EventEmitter} from 'events';
 const eventEmitter = new EventEmitter();
 
-import  {ChatInputCommandInteraction, ChannelType, REST, SlashCommandBuilder, Routes, Client, Interaction, GuildMember, Channel, TextChannel } from 'discord.js';
+import  {ChatInputCommandInteraction, ChannelType, REST, SlashCommandBuilder, Routes, Client, Interaction, GuildMember, Channel, TextChannel, EmbedBuilder } from 'discord.js';
 import {
 	AudioPlayerStatus,
 	AudioResource,
@@ -12,24 +12,25 @@ import {
     StreamType, createAudioPlayer, createAudioResource, getVoiceConnection, VoiceConnection
 } from '@discordjs/voice';
 import {YTVideos} from './types';
-const player = createAudioPlayer();
-setupAudioPlayer();
-import {validateURL} from 'ytdl-core';
+import {validateURL, getURLVideoID, getBasicInfo} from 'ytdl-core';
 import { exec as ytdl } from 'youtube-dl-exec';
+import { disconnect } from 'process';
 
-let token, nvideaID, tarasManiasID ;
+let token, nvideaID : string | undefined, tarasManiasID : string | undefined ;
 try {
     const auth = require('../auth.json');
     token = auth.token;
     nvideaID = auth.nvideaID;
     tarasManiasID = auth.tarasManiasID;
 } catch (error) {
-    console.log(error)
     token = process.env.token;
     nvideaID = process.env.nvideaID;
     tarasManiasID = process.env.tarasManiasID;
 }
 
+const player = createAudioPlayer();
+setupAudioPlayer();
+let connection: VoiceConnection | undefined;
 let queuedVideos: YTVideos[] = [];
 
 const client = new Client({ intents: ['GuildVoiceStates', 'GuildMessages', 'Guilds'] });
@@ -39,32 +40,35 @@ client.login(token);
 client.on('ready', async function (evt) {
     console.log('Ready!');
 
-    // const subprocess = ytdl('https://www.youtube.com/watch?v=4s7uc_j1Sm0', {
-    //     format: 'bestaudio',
-    //     // format: 'bestaudio[ext=webm+acodec=opus+asr=48000]/bestaudio',
-    //    // dumpSingleJson: true
-    // })
-
-
-    // if (!subprocess.stdout) {
-    //     console.log('no process.stdout')
-    //     return;
-    // }
-    // subprocess.stdout.pipe(fs.createWriteStream('stdout.txt'))
-    // if (!subprocess.stderr) {
-    //     console.log('no process.stdout')
-    //     return;
-    // }
-    // subprocess.stderr.pipe(fs.createWriteStream('stderr.txt'))
-
     // registerSlashCommands(client.user?.id, nvideaID, token);
 })
 
+client.on('voiceStateUpdate', (oldState, newState) =>{
+    console.log('voiceStateUpdate')
+
+    const botID = '760202834364334151';
+    const serverID = nvideaID
+    if (!serverID) {
+        return
+    }
+    const botVoiceChannel = client.guilds.cache.get(serverID)?.voiceStates.cache.get(botID)?.channel;
+    if(!botVoiceChannel){
+        return
+    }
+    console.log(botVoiceChannel?.members.size);
+    if(botVoiceChannel?.members.size === 1){
+        connection?.destroy()
+    }
+    
+    //someone DC'd
+    // if (oldState.channelId && !newState.channelId){
+    // }
+} )
+
 eventEmitter.on('new video', () => {
     console.log('new video event', queuedVideos[queuedVideos.length-1]?.url)
-    VoiceConnectionStatus.Ready
 
-    let connection = getVoiceConnection(queuedVideos[0].guildId);
+    connection = getVoiceConnection(queuedVideos[0].guildId);
     if(!connection){
         console.log('no previous connection creating new connection')
         const channel = queuedVideos[0].voiceChannel;
@@ -77,18 +81,21 @@ eventEmitter.on('new video', () => {
     }
 });
 
+process.on('exit', () => {
+    if(connection){
+        connection.destroy()
+    }
+})
+
 function setupAudioPlayer(){
     player.on(AudioPlayerStatus.Playing, () => {
         console.log('playing video');
-        // let info = ytdl.getBasicInfo(queuedVideos[0].url).then(() => {
-        //     console.log(info)
-        // })
         
         const channel: Channel | undefined = client.channels.cache.get(queuedVideos[0].textChannelId)!;
         if(!channel) return;
         if (!((channel): channel is TextChannel => channel.type === ChannelType.GuildText)(channel)) return;
 
-        channel?.send('Now playing: ' + queuedVideos[0].url)
+        channel?.send('Now playing: ' + queuedVideos[0].url  + ' (requested by: **' + queuedVideos[0].requestedBy + '**)')
     })
 
     player.on(AudioPlayerStatus.Idle, () => {
@@ -97,10 +104,9 @@ function setupAudioPlayer(){
         if(!connection) return;
 
         queuedVideos.shift();
-        if(queuedVideos.length > 0)
+        if(queuedVideos.length > 0){
             playNextVideo(connection)
-        else
-            connection.destroy()
+        }
     });
 }
 
@@ -108,39 +114,46 @@ async function addURLToQueue(interaction : ChatInputCommandInteraction){
     // console.log(interaction)
     const guildId = interaction.guildId;
     if(!guildId) return ('Please use the command in a server.')
-    const url : string | null = interaction.options.getString('url');
+    const inputUrl : string | null = interaction.options.getString('url');
 
-    
     // let regexResult = 0;
     // const youtubeRegex = /^((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube\.com|youtu.be))(\/(?:[\w\-]+\?v=|embed\/|v\/)?)([\w\-]+)(\S+)?$/
     // regexResult = url.match(youtubeRegex)
     //console.log(regexResult)
-    if(!url) return ('Please type a valid youtube URL /caburro!')
-    const validUrl = validateURL(url)
+
+    if(!inputUrl) return ('Please type a valid youtube URL /caburro!')
+    const validUrl = validateURL(inputUrl)
 
     if(!validUrl)
         return 'Please type a valid youtube URL /caburro!'
 
-    
+    const videoId = getURLVideoID(inputUrl);
+    const url = 'https://www.youtube.com/watch?v=' + videoId;
+    let title = url;
+    try {
+        const info = await getBasicInfo(url);
+        console.log(info.player_response.videoDetails.title)
+        title = info.player_response.videoDetails.title;
+    } catch (error) {
+        console.log(error)
+        return 'There was an error retrieving the data from this video.'
+    }
+
     const guildMember = interaction.member;
     if(!guildMember || !(guildMember instanceof GuildMember)) return ('User isn\'t a part of any server.')
     
     const voiceChannel = guildMember.voice.channel
-    
-    // let voiceChannel = client.guilds.cache.get(guildId).voiceStates.cache.get(memberId)?.channel;
-    // console.log(voiceChannel, voiceChannel2)
-    if(!voiceChannel) return 'You must be on a voice channel to add a video to the queue.';
+    if(!voiceChannel) return 'You must be on a voice channel to add a video to the queue  /caburro!';
 
-    queuedVideos.push({url: url, textChannelId: interaction.channelId, voiceChannel: voiceChannel, guildId: guildId})
+    queuedVideos.push({url: url, title: title, textChannelId: interaction.channelId, voiceChannel: voiceChannel, guildId: guildId, requestedBy: interaction.member?.user.username!})
     eventEmitter.emit('new video');
-    // console.log(queuedVideos);
-    const auxString = (queuedVideos.length - 1)
-    return ('Video added to queue (videos ahead: ' + auxString +'): ' + url)
+
+    const numberOfQueuedVideos = (queuedVideos.length - 1)
+    const auxString = (numberOfQueuedVideos === 1)  ? (numberOfQueuedVideos + ' video') : (numberOfQueuedVideos + ' videos')
+    return ('Video added to queue: **' + title + '** (' + auxString +' ahead)')
 }
 
-function playNextVideo (connection: VoiceConnection){
-    let start = Date.now();
-    console.log(Date.now() - start + ': starting next video...')
+async function playNextVideo (connection: VoiceConnection){
     const process = ytdl(
         queuedVideos[0].url,
         {
@@ -153,27 +166,39 @@ function playNextVideo (connection: VoiceConnection){
         }
         ,{ stdio: ['ignore', 'pipe', 'ignore'] },
     );
-    console.log(Date.now() - start + ': video loaded.')
     if (!process.stdout) {
         console.log('no process.stdout')
         return;
     }
-    // process.stdout.pipe(fs.createWriteStream('stdout.txt'))
-    // if (!process.stderr) {
-    //     console.log('no process.stdout')
-    //     return;
-    // }
-    // process.stderr.pipe(fs.createWriteStream('stderr.txt'))
 
-    console.log(Date.now() - start + ': creating stream...')
     const stream = process.stdout;
-    // createAudioResource(probe.stream, { metadata: this, inputType: probe.type })
-    console.log(Date.now() - start + ': creating audio resource...')
     const audioResource = createAudioResource(stream);
-    console.log(Date.now() - start + ': playing audio resource')
     player.play(audioResource);
-    console.log(Date.now() - start + ': subscribing player')
-    connection.subscribe(player);
+    
+    try {
+        await entersState(connection, VoiceConnectionStatus.Ready, 30_000);
+        connection.subscribe(player);
+    } catch (error) {
+        connection.destroy();
+        throw error;
+    }
+}
+
+async function showQueue (){
+    if(!queuedVideos.length){
+        return 'There are no videos queued.'
+    }
+    let returnString = ''
+    for (let i = 0; i < queuedVideos.length && i <= 10; i++) {
+        if(i === 10){
+            returnString += "..."
+        }else{
+            const video = queuedVideos[i];
+            console.log(queuedVideos)
+            returnString += (`${i + 1} - **${video.title}** (requested by **${video.requestedBy}**)\n`)
+        }
+    }
+    return returnString
 }
 
 client.on('interactionCreate', async interaction => {
@@ -189,7 +214,13 @@ client.on('interactionCreate', async interaction => {
         })
         return;
 	} else if (commandName === 'queue') {
-		await interaction.reply('wip');
+		showQueue().then( (resposta) => {
+            console.log('resposta', resposta)
+
+            const embed = new EmbedBuilder().setColor(0x0099FF).setTitle('Video Queue').setDescription(resposta);
+
+            interaction.reply({ephemeral: false, embeds: [embed] });
+        })
 	} else if (commandName === 'clear') {
         queuedVideos.splice(1);
         interaction.reply('Queue cleared 🚮');
@@ -207,8 +238,9 @@ client.on('interactionCreate', async interaction => {
         interaction.reply('Skipping to next track... ⏭');
         return;
     } else if (commandName === 'disconnect') {
-        queuedVideos.splice(1);
         player.stop()
+        queuedVideos = [];
+        connection?.destroy()
         interaction.reply('Disconnecting... 👋');
         return;
     }

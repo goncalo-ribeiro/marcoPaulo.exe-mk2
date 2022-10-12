@@ -2,10 +2,11 @@ import { VoiceBasedChannel } from "discord.js";
 
 export interface YTVideos {
 	url: string;
-	// title: string;
+	title: string;
     textChannelId: string;
     guildId: string;
-    voiceChannel: VoiceBasedChannel
+    voiceChannel: VoiceBasedChannel,
+	requestedBy: string,
 	// onStart: () => void;
 	// onFinish: () => void;
 	// onError: (error: Error) => void;
