@@ -57,6 +57,7 @@ client.on('voiceStateUpdate', (oldState, newState) =>{
     }
     console.log(botVoiceChannel?.members.size);
     if(botVoiceChannel?.members.size === 1){
+        queuedVideos = []
         connection?.destroy()
     }
     
