@@ -88,9 +88,10 @@ eventEmitter.on('new video', async () => {
         }
         playNextVideo()
     }
-    console.log(player.state)
-    if(player.state.status === AudioPlayerStatus.Idle){
-        playNextVideo()
+    else{
+        if(player.state.status === AudioPlayerStatus.Idle){
+            playNextVideo()
+        }
     }
 });
 
