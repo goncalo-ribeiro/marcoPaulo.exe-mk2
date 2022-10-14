@@ -9,7 +9,7 @@ import {
 	entersState,
 	joinVoiceChannel,
 	VoiceConnectionStatus,
-    StreamType, createAudioPlayer, createAudioResource, getVoiceConnection, VoiceConnection
+    StreamType, createAudioPlayer, createAudioResource, getVoiceConnection, VoiceConnection, demuxProbe
 } from '@discordjs/voice';
 import {YTVideos} from './types';
 import {validateURL, getURLVideoID, getBasicInfo} from 'ytdl-core';
@@ -66,7 +66,7 @@ client.on('voiceStateUpdate', (oldState, newState) =>{
     // }
 } )
 
-eventEmitter.on('new video', () => {
+eventEmitter.on('new video', async () => {
     console.log('new video event', queuedVideos[queuedVideos.length-1]?.url)
 
     connection = getVoiceConnection(queuedVideos[0].guildId);
@@ -78,7 +78,19 @@ eventEmitter.on('new video', () => {
             guildId: channel.guild.id,
             adapterCreator: channel.guild.voiceAdapterCreator,
         });
-        playNextVideo(connection)
+        try {
+            await entersState(connection, VoiceConnectionStatus.Ready, 30_000);
+            connection.subscribe(player);
+        } catch (error) {
+            console.log(error)
+            connection.destroy();
+            throw error;
+        }
+        playNextVideo()
+    }
+    console.log(player.state)
+    if(player.state.status === AudioPlayerStatus.Idle){
+        playNextVideo()
     }
 });
 
@@ -101,12 +113,10 @@ function setupAudioPlayer(){
 
     player.on(AudioPlayerStatus.Idle, () => {
         console.log('audio player idle')
-        let connection: VoiceConnection | undefined = getVoiceConnection(queuedVideos[0].guildId);
-        if(!connection) return;
-
+        
         queuedVideos.shift();
         if(queuedVideos.length > 0){
-            playNextVideo(connection)
+            playNextVideo()
         }
     });
 }
@@ -154,7 +164,8 @@ async function addURLToQueue(interaction : ChatInputCommandInteraction){
     return ('Video added to queue: **' + title + '** (' + auxString +' ahead)')
 }
 
-async function playNextVideo (connection: VoiceConnection){
+async function playNextVideo (){
+    console.log('playing next video')
     const process = ytdl(
         queuedVideos[0].url,
         {
@@ -173,14 +184,17 @@ async function playNextVideo (connection: VoiceConnection){
     }
 
     const stream = process.stdout;
-    const audioResource = createAudioResource(stream);
-    player.play(audioResource);
-    
+
     try {
-        await entersState(connection, VoiceConnectionStatus.Ready, 30_000);
-        connection.subscribe(player);
+        const probe = await demuxProbe(stream)
+
+        const audioResource = createAudioResource(probe.stream, { inputType: probe.type });
+        
+        player.play(audioResource);
+    
     } catch (error) {
-        connection.destroy();
+        console.log(error)
+        // connection.destroy();
         throw error;
     }
 }
@@ -195,7 +209,7 @@ async function showQueue (){
             returnString += "..."
         }else{
             const video = queuedVideos[i];
-            console.log(queuedVideos)
+            // console.log(queuedVideos)
             returnString += (`${i + 1} - **${video.title}** (requested by **${video.requestedBy}**)\n`)
         }
     }
