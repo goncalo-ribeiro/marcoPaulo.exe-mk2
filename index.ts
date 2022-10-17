@@ -2,19 +2,19 @@ import fs from 'fs';
 import {EventEmitter} from 'events';
 const eventEmitter = new EventEmitter();
 
-import  {ChatInputCommandInteraction, ChannelType, REST, SlashCommandBuilder, Routes, Client, Interaction, GuildMember, Channel, TextChannel, EmbedBuilder } from 'discord.js';
+import  {ActionRowBuilder, ChatInputCommandInteraction, ChannelType, REST, SlashCommandBuilder, Routes, Client, Interaction, GuildMember, Channel, TextChannel, EmbedBuilder, ButtonBuilder, ButtonStyle, AnyComponentBuilder, InteractionReplyOptions, APIActionRowComponent, APIMessageActionRowComponent, ButtonInteraction } from 'discord.js';
 import {
 	AudioPlayerStatus,
 	AudioResource,
 	entersState,
 	joinVoiceChannel,
 	VoiceConnectionStatus,
-    StreamType, createAudioPlayer, createAudioResource, getVoiceConnection, VoiceConnection, demuxProbe
+    StreamType, createAudioPlayer, createAudioResource, getVoiceConnection, VoiceConnection, demuxProbe,
 } from '@discordjs/voice';
-import {YTVideos} from './types';
+import {YTVideos, AddYoutubeVideoResponse} from './types';
 import {validateURL, getURLVideoID, getBasicInfo} from 'ytdl-core';
 import { exec as ytdl } from 'youtube-dl-exec';
-import { disconnect } from 'process';
+import yts from 'yt-search'
 
 let token, nvideaID : string | undefined, tarasManiasID : string | undefined ;
 try {
@@ -122,22 +122,52 @@ function setupAudioPlayer(){
     });
 }
 
-async function addURLToQueue(interaction : ChatInputCommandInteraction){
+async function addURLToQueue(interaction : ChatInputCommandInteraction | ButtonInteraction) : Promise<AddYoutubeVideoResponse>{
     // console.log(interaction)
     const guildId = interaction.guildId;
-    if(!guildId) return ('Please use the command in a server.')
-    const inputUrl : string | null = interaction.options.getString('url');
+    let response : AddYoutubeVideoResponse = {videoSearch: false, message: '', searchVideoList: null}
+    if(!guildId) {
+        response.message = 'Please use the command in a server.'
+        return response;
+    }
+
+    const guildMember = interaction.member;
+    if(!guildMember || !(guildMember instanceof GuildMember)){
+        response.message = 'User isn\'t a part of any server.';
+        return response;
+    } 
+    
+    const voiceChannel = guildMember.voice.channel
+    if(!voiceChannel) {
+        response.message = 'You must be on a voice channel to add a video to the queue  /caburro!';
+        return response;
+    }
+
+    const inputUrl : string | null = (interaction.isChatInputCommand()) ? interaction.options.getString('url') : interaction.customId;
 
     // let regexResult = 0;
     // const youtubeRegex = /^((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube\.com|youtu.be))(\/(?:[\w\-]+\?v=|embed\/|v\/)?)([\w\-]+)(\S+)?$/
     // regexResult = url.match(youtubeRegex)
     //console.log(regexResult)
 
-    if(!inputUrl) return ('Please type a valid youtube URL /caburro!')
+    if(!inputUrl) {
+        response.message = 'Please type a valid youtube URL /caburro!'
+        return response;
+    }
+    
     const validUrl = validateURL(inputUrl)
-
-    if(!validUrl)
-        return 'Please type a valid youtube URL /caburro!'
+    if(!validUrl){
+        // return 'Please type a valid youtube URL /caburro!'
+        const results = await yts( inputUrl )
+        response.searchVideoList = results.videos.slice(0,5);
+        if(response.searchVideoList.length === 0){
+            response.message = `No videos were found using the term: "${inputUrl}"`;
+            return response;
+        }
+        response.videoSearch = true
+        response.message = 'Please select a video from the ones available below:'
+        return response;
+    }
 
     const videoId = getURLVideoID(inputUrl);
     const url = 'https://www.youtube.com/watch?v=' + videoId;
@@ -148,21 +178,18 @@ async function addURLToQueue(interaction : ChatInputCommandInteraction){
         title = info.player_response.videoDetails.title;
     } catch (error) {
         console.log(error)
-        return 'There was an error retrieving the data from this video.'
+        response.message = 'There was an error retrieving the data from this video.'
+        return response;
     }
-
-    const guildMember = interaction.member;
-    if(!guildMember || !(guildMember instanceof GuildMember)) return ('User isn\'t a part of any server.')
-    
-    const voiceChannel = guildMember.voice.channel
-    if(!voiceChannel) return 'You must be on a voice channel to add a video to the queue  /caburro!';
 
     queuedVideos.push({url: url, title: title, textChannelId: interaction.channelId, voiceChannel: voiceChannel, guildId: guildId, requestedBy: interaction.member?.user.username!})
     eventEmitter.emit('new video');
 
     const numberOfQueuedVideos = (queuedVideos.length - 1)
     const auxString = (numberOfQueuedVideos === 1)  ? (numberOfQueuedVideos + ' video') : (numberOfQueuedVideos + ' videos')
-    return ('Video added to queue: **' + title + '** (' + auxString +' ahead)')
+    
+    response.message = 'Video added to queue: **' + title + '** (' + auxString +' ahead)'
+    return response;
 }
 
 async function playNextVideo (){
@@ -201,15 +228,16 @@ async function playNextVideo (){
 }
 
 async function showQueue (){
-    if(!queuedVideos.length){
+    const auxQueue = queuedVideos.slice(1)
+    if(!auxQueue.length){
         return 'There are no videos queued.'
     }
     let returnString = ''
-    for (let i = 0; i < queuedVideos.length && i <= 10; i++) {
+    for (let i = 0; i < auxQueue.length && i <= 10; i++) {
         if(i === 10){
             returnString += "..."
         }else{
-            const video = queuedVideos[i];
+            const video = auxQueue[i];
             // console.log(queuedVideos)
             returnString += (`${i + 1} - **${video.title}** (requested by **${video.requestedBy}**)\n`)
         }
@@ -218,6 +246,19 @@ async function showQueue (){
 }
 
 client.on('interactionCreate', async interaction => {
+    console.log('new interaction!')
+    // console.log(interaction)
+
+    // In case a video is searched and selected though the embed buttons
+    if (interaction.isButton()){
+        addURLToQueue(interaction).then( (resposta) => {
+            if(!resposta.videoSearch){
+                interaction.update({ content: resposta.message, components: [], embeds: [] });
+            }
+        });
+        return;
+    } 
+
 	if (!interaction.isChatInputCommand()) return;
 
 	const { commandName } = interaction;
@@ -225,8 +266,19 @@ client.on('interactionCreate', async interaction => {
 
 	if (commandName === 'play') {
         addURLToQueue(interaction).then( (resposta) => {
-            console.log('resposta', resposta)
-            interaction.reply(resposta);
+            // console.log('resposta', resposta)
+            if(!resposta.videoSearch){
+                interaction.reply(resposta.message);
+                return
+            }else{
+                const videoSearchInteractionReply = videoSearchInteractionBuilder(resposta)
+                if(!videoSearchInteractionReply){
+                    interaction.reply('There was an error processing the video search (input term: ' + interaction.options.getString('url') + ')');
+                    return
+                }
+                interaction.reply(videoSearchInteractionReply)
+                return
+            }
         })
         return;
 	} else if (commandName === 'queue') {
@@ -262,6 +314,26 @@ client.on('interactionCreate', async interaction => {
     }
 
 });
+
+function videoSearchInteractionBuilder(response: AddYoutubeVideoResponse) : InteractionReplyOptions | null {
+// : YoutubeSearchResponse | null{
+    const embedTitle : string = response.message;
+    let embedDescription : string = '';
+    let buttonArray : ButtonBuilder[] = [];
+    if(!response.searchVideoList){
+        return null
+    }
+    for (let i = 0; i < response.searchVideoList.length; i++) {
+        const searchResult = response.searchVideoList[i];
+        embedDescription += `**${i+1}:** ${searchResult.title} **(${searchResult.timestamp})**\n`
+        buttonArray.push(new ButtonBuilder().setCustomId(searchResult.url).setLabel(''+ (i+1)).setStyle(ButtonStyle.Primary))
+    }
+    const embed = new EmbedBuilder().setColor(0x0099FF).setTitle(embedTitle).setDescription(embedDescription)
+    let row = new ActionRowBuilder<ButtonBuilder>().addComponents(...buttonArray)
+    return {ephemeral: false, embeds: [embed]
+        , components:[row]
+    }
+}
 
 function registerSlashCommands(clientId: string | undefined, guildId: string, token: string){
     if(!clientId) {

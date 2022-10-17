@@ -1,4 +1,5 @@
-import { VoiceBasedChannel } from "discord.js";
+import { ActionRowBuilder, AnyComponentBuilder, APIActionRowComponent, APIMessageActionRowComponent, EmbedBuilder, MessageActionRowComponentBuilder, MessageActionRowComponentData, VoiceBasedChannel } from "discord.js";
+import { VideoSearchResult } from "yt-search";
 
 export interface YTVideos {
 	url: string;
@@ -10,4 +11,10 @@ export interface YTVideos {
 	// onStart: () => void;
 	// onFinish: () => void;
 	// onError: (error: Error) => void;
+}
+
+export interface AddYoutubeVideoResponse {
+	videoSearch: boolean;
+	message: string;
+	searchVideoList: VideoSearchResult[] | null;
 }
