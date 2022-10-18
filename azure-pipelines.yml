@@ -22,8 +22,12 @@ steps:
     architecture: 'x64'
 
 - task: CmdLine@2
+  env:
+    token: $(token)
+    nvidea: $(nvidea)
   inputs:
     script: |
       npm install
       npm run build
       npm run start
+    
