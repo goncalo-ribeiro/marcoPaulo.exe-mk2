@@ -1,4 +1,4 @@
-import { ActionRowBuilder, AnyComponentBuilder, APIActionRowComponent, APIMessageActionRowComponent, EmbedBuilder, MessageActionRowComponentBuilder, MessageActionRowComponentData, VoiceBasedChannel } from "discord.js";
+import { VoiceBasedChannel } from "discord.js";
 import { VideoSearchResult } from "yt-search";
 
 export interface YTVideos {
@@ -17,4 +17,9 @@ export interface AddYoutubeVideoResponse {
 	videoSearch: boolean;
 	message: string;
 	searchVideoList: VideoSearchResult[] | null;
+}
+
+export interface YoutubeURLPlaylistInfo{
+	hasPlaylist: boolean
+	playlistId? : string
 }

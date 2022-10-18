@@ -12,10 +12,10 @@ import {
 	VoiceConnectionStatus,
     StreamType, createAudioPlayer, createAudioResource, getVoiceConnection, VoiceConnection, demuxProbe,
 } from '@discordjs/voice';
-import {YTVideos, AddYoutubeVideoResponse} from './types';
+import {YTVideos, AddYoutubeVideoResponse, YoutubeURLPlaylistInfo} from './types';
 import {validateURL, getURLVideoID, getBasicInfo} from 'ytdl-core';
 import { exec as ytdl } from 'youtube-dl-exec';
-import yts from 'yt-search'
+import {PlaylistMetadataResult, search} from 'yt-search'
 
 let token, nvideaID : string | undefined, tarasManiasID : string | undefined ;
 try {
@@ -162,16 +162,45 @@ async function addURLToQueue(interaction : ChatInputCommandInteraction | ButtonI
     
     const validUrl = validateURL(inputUrl)
     if(!validUrl){
-        // return 'Please type a valid youtube URL /caburro!'
-        const results = await yts( inputUrl )
-        response.searchVideoList = results.videos.slice(0,5);
-        if(response.searchVideoList.length === 0){
-            response.message = `No videos were found using the term: "${inputUrl}"`;
+        const youtubeURLPlaylistInfo = checkIfUrlHasPlaylist(inputUrl)
+
+        //not a playlist, as such will search for using the user input as a query term
+        if(!youtubeURLPlaylistInfo.hasPlaylist || !youtubeURLPlaylistInfo.playlistId){
+            const results = await search( inputUrl )
+            response.searchVideoList = results.videos.slice(0,5);
+            if(response.searchVideoList.length === 0){
+                response.message = `No videos were found using the term: "${inputUrl}"`;
+                return response;
+            }
+            response.videoSearch = true
+            response.message = 'Please select a video from the ones available below:'
             return response;
         }
-        response.videoSearch = true
-        response.message = 'Please select a video from the ones available below:'
-        return response;
+
+        //is playlist, will add all the playlist videos to the queue
+        else{
+            let list : PlaylistMetadataResult;
+            try {
+                list = await search( { listId: youtubeURLPlaylistInfo.playlistId } )
+            } catch (error) {
+                console.log(error)
+                response.message = 'Invalid Playlist /caburro'
+                return response
+            }
+
+            console.log( 'playlist title: ' + list.title )
+            for (let i = 0; i < list.videos.length; i++) {
+                const video = list.videos[i];
+                const url = 'https://www.youtube.com/watch?v=' + video.videoId;
+                queuedVideos.push({url: url, title: video.title, textChannelId: interaction.channelId, voiceChannel: voiceChannel, guildId: guildId, requestedBy: interaction.member?.user.username!})
+            }
+            if(list.videos.length > 0){
+                eventEmitter.emit('new video');
+            }
+            response.message = 'Playlist added to queue (' + list.title + ' - **'+ list.videos.length +' videos added**).'
+            return response;
+        }
+
     }
 
     const videoId = getURLVideoID(inputUrl);
@@ -353,6 +382,16 @@ function printQueue(){
         console.log(i + ' - ' + queuedVideo.title + ' (' + queuedVideo.textChannelId + ')')
     }
     console.log('End of queue.')
+}
+
+function checkIfUrlHasPlaylist(url : string) : YoutubeURLPlaylistInfo {
+    let regexResult;
+    const youtubeRegex = /^.*(youtu.be\/|list=)([^#\&\?]*).*/
+    regexResult = url.match(youtubeRegex)
+    if (!regexResult){
+        return {hasPlaylist : false};
+    }
+    return {hasPlaylist: true, playlistId: regexResult[2]};
 }
 
 function registerSlashCommands(clientId: string | undefined, guildId: string, token: string){
