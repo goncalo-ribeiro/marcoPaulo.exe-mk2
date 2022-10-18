@@ -14,6 +14,10 @@ steps:
   inputs:
     versionSpec: '10.x'
   displayName: 'Install Node.js'
+- task: UsePythonVersion@0
+  inputs:
+    versionSpec: '3.7'
+  displayName: 'Install Python3'
 
 - script: |
     npm install
