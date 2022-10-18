@@ -12,14 +12,18 @@ pool:
 steps:
 - task: NodeTool@0
   inputs:
-    versionSpec: '10.x'
+    versionSpec: '18.x'
   displayName: 'Install Node.js'
+
 - task: UsePythonVersion@0
   inputs:
-    versionSpec: '3.7'
-  displayName: 'Install Python3'
+    versionSpec: '3.8'
+    addToPath: true
+    architecture: 'x64'
 
-- script: |
-    npm install
-    npm run build
-  displayName: 'npm install and build'
+- task: CmdLine@2
+  inputs:
+    script: |
+      npm install
+      npm run build
+      npm run start
