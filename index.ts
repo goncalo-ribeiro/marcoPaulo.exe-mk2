@@ -4,6 +4,7 @@ const eventEmitter = new EventEmitter();
 
 import  {ActionRowBuilder, ChatInputCommandInteraction, ChannelType, REST, SlashCommandBuilder, Routes, Client, Interaction, GuildMember, Channel, TextChannel, EmbedBuilder, ButtonBuilder, ButtonStyle, AnyComponentBuilder, InteractionReplyOptions, APIActionRowComponent, APIMessageActionRowComponent, ButtonInteraction } from 'discord.js';
 import {
+    AudioPlayer,
 	AudioPlayerStatus,
 	AudioResource,
 	entersState,
@@ -28,8 +29,7 @@ try {
     tarasManiasID = process.env.tarasManiasID;
 }
 
-const player = createAudioPlayer();
-setupAudioPlayer();
+let player : AudioPlayer;
 let connection: VoiceConnection | undefined;
 let queuedVideos: YTVideos[] = [];
 
@@ -57,8 +57,7 @@ client.on('voiceStateUpdate', (oldState, newState) =>{
     }
     console.log(botVoiceChannel?.members.size);
     if(botVoiceChannel?.members.size === 1){
-        queuedVideos = []
-        connection?.destroy()
+        disconnect()
     }
     
     //someone DC'd
@@ -72,6 +71,7 @@ eventEmitter.on('new video', async () => {
     connection = getVoiceConnection(queuedVideos[0].guildId);
     if(!connection){
         console.log('no previous connection creating new connection')
+        setupAudioPlayer();
         const channel = queuedVideos[0].voiceChannel;
         connection = joinVoiceChannel({
             channelId: channel.id,
@@ -83,13 +83,15 @@ eventEmitter.on('new video', async () => {
             connection.subscribe(player);
         } catch (error) {
             console.log(error)
-            connection.destroy();
+            disconnect()
             throw error;
         }
+        console.log('play next video (on new video (new connection))')
         playNextVideo()
     }
     else{
         if(player.state.status === AudioPlayerStatus.Idle){
+            console.log('play next video (on new video (AudioPlayerStatus.Idle))')
             playNextVideo()
         }
     }
@@ -97,13 +99,15 @@ eventEmitter.on('new video', async () => {
 
 process.on('exit', () => {
     if(connection){
-        connection.destroy()
+        disconnect()
     }
 })
 
 function setupAudioPlayer(){
+    player = createAudioPlayer()
     player.on(AudioPlayerStatus.Playing, () => {
         console.log('playing video');
+        printQueue();
         
         const channel: Channel | undefined = client.channels.cache.get(queuedVideos[0].textChannelId)!;
         if(!channel) return;
@@ -117,6 +121,7 @@ function setupAudioPlayer(){
         
         queuedVideos.shift();
         if(queuedVideos.length > 0){
+            console.log('play next video (on audio player Idle)')
             playNextVideo()
         }
     });
@@ -227,6 +232,14 @@ async function playNextVideo (){
     }
 }
 
+function disconnect(){
+    console.log('disconnecting...')
+    player.stop()
+    player.removeAllListeners();
+    queuedVideos = [];
+    connection?.destroy()
+}
+
 async function showQueue (){
     const auxQueue = queuedVideos.slice(1)
     if(!auxQueue.length){
@@ -306,9 +319,7 @@ client.on('interactionCreate', async interaction => {
         interaction.reply('Skipping to next track... ⏭');
         return;
     } else if (commandName === 'disconnect') {
-        player.stop()
-        queuedVideos = [];
-        connection?.destroy()
+        disconnect()
         interaction.reply('Disconnecting... 👋');
         return;
     }
@@ -333,6 +344,15 @@ function videoSearchInteractionBuilder(response: AddYoutubeVideoResponse) : Inte
     return {ephemeral: false, embeds: [embed]
         , components:[row]
     }
+}
+
+function printQueue(){
+    console.log('Printing queue:')
+    for (let i = 0; i < queuedVideos.length; i++) {
+        const queuedVideo = queuedVideos[i];
+        console.log(i + ' - ' + queuedVideo.title + ' (' + queuedVideo.textChannelId + ')')
+    }
+    console.log('End of queue.')
 }
 
 function registerSlashCommands(clientId: string | undefined, guildId: string, token: string){
