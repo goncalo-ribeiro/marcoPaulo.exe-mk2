@@ -137,7 +137,7 @@ function setupAudioPlayer(){
 async function addURLToQueue(interaction : ChatInputCommandInteraction | ButtonInteraction) : Promise<AddYoutubeVideoResponse>{
     // console.log(interaction)
     const guildId = interaction.guildId;
-    let response : AddYoutubeVideoResponse = {videoSearch: false, message: '', searchVideoList: null}
+    let response : AddYoutubeVideoResponse = {videoSearch: false, message: '', searchVideoList: null, next: false}
     if(!guildId) {
         response.message = 'Please use the command in a server.'
         return response;
@@ -155,10 +155,10 @@ async function addURLToQueue(interaction : ChatInputCommandInteraction | ButtonI
         return response;
     }
 
-    const inputUrl : string | null = (interaction.isChatInputCommand()) ? interaction.options.getString('url') : interaction.customId;
-    const inputNext : boolean | null =  (interaction.isChatInputCommand()) ? interaction.options.getBoolean('next') : false;
-    const next : boolean = (inputNext) ? true : false;
-    console.log('parameter "next": ', next)
+    const inputUrl : string | null = (interaction.isChatInputCommand()) ? interaction.options.getString('url') : interaction.customId.split(" ")[0];
+    const inputNext : boolean | null =  (interaction.isChatInputCommand()) ? interaction.options.getBoolean('next') : (interaction.customId.split(" ")[1] === 'true');
+    response.next = (inputNext) ? true : false;
+    console.log('parameter "next": ', response.next)
 
     // let regexResult = 0;
     // const youtubeRegex = /^((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube\.com|youtu.be))(\/(?:[\w\-]+\?v=|embed\/|v\/)?)([\w\-]+)(\S+)?$/
@@ -200,7 +200,7 @@ async function addURLToQueue(interaction : ChatInputCommandInteraction | ButtonI
             }
 
             console.log( 'playlist title: ' + list.title )
-            if(next){   //adding to the top of the queue
+            if(response.next){   //adding to the top of the queue
                 for(let i = list.videos.length - 1; i >= 0; i--){
                     const video = list.videos[i];
                     const url = 'https://www.youtube.com/watch?v=' + video.videoId;
@@ -236,11 +236,8 @@ async function addURLToQueue(interaction : ChatInputCommandInteraction | ButtonI
     }
 
     const newVideo : YTVideo = {url: url, title: title, textChannelId: interaction.channelId, voiceChannel: voiceChannel, guildId: guildId, requestedBy: interaction.member?.user.username!}
-    if(!next) {queuedVideos.push(newVideo)}
-    else {
-        // queuedVideos.unshift(newVideo)
-        queuedVideos.splice(1, 0, newVideo)
-    }
+    if(!response.next) {queuedVideos.push(newVideo)}
+    else {queuedVideos.splice(1, 0, newVideo)}
     eventEmitter.emit('new video');
 
     const numberOfQueuedVideos = (queuedVideos.length - 1)
@@ -423,7 +420,7 @@ function videoSearchInteractionBuilder(response: AddYoutubeVideoResponse) : Inte
     for (let i = 0; i < response.searchVideoList.length; i++) {
         const searchResult = response.searchVideoList[i];
         embedDescription += `**${i+1}:** ${searchResult.title} **(${searchResult.timestamp})**\n`
-        buttonArray.push(new ButtonBuilder().setCustomId(searchResult.url).setLabel(''+ (i+1)).setStyle(ButtonStyle.Primary))
+        buttonArray.push(new ButtonBuilder().setCustomId(searchResult.url + ' ' + response.next).setLabel(''+ (i+1)).setStyle(ButtonStyle.Primary))
     }
     const embed = new EmbedBuilder().setColor(0x0099FF).setTitle(embedTitle).setDescription(embedDescription)
     let row = new ActionRowBuilder<ButtonBuilder>().addComponents(...buttonArray)

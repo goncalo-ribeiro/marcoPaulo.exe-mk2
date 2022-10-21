@@ -17,6 +17,7 @@ export interface AddYoutubeVideoResponse {
 	videoSearch: boolean;
 	message: string;
 	searchVideoList: VideoSearchResult[] | null;
+	next : boolean;
 }
 
 export interface YoutubeURLPlaylistInfo{
