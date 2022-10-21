@@ -1,7 +1,7 @@
 import { VoiceBasedChannel } from "discord.js";
 import { VideoSearchResult } from "yt-search";
 
-export interface YTVideos {
+export interface YTVideo {
 	url: string;
 	title: string;
     textChannelId: string;

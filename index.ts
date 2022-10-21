@@ -11,7 +11,7 @@ import {
 	VoiceConnectionStatus,
     StreamType, createAudioPlayer, createAudioResource, getVoiceConnection, VoiceConnection, demuxProbe,
 } from '@discordjs/voice';
-import {YTVideos, AddYoutubeVideoResponse, YoutubeURLPlaylistInfo} from './types';
+import {YTVideo, AddYoutubeVideoResponse, YoutubeURLPlaylistInfo} from './types';
 import {validateURL, getURLVideoID, getBasicInfo} from 'ytdl-core';
 import { exec as ytdl } from 'youtube-dl-exec';
 import {PlaylistMetadataResult, search} from 'yt-search'
@@ -30,7 +30,7 @@ try {
 
 let player : AudioPlayer;
 let connection: VoiceConnection | undefined;
-let queuedVideos: YTVideos[] = [];
+let queuedVideos: YTVideo[] = [];
 
 const client = new Client({ intents: ['GuildVoiceStates', 'GuildMessages', 'Guilds'] });
 
@@ -156,6 +156,9 @@ async function addURLToQueue(interaction : ChatInputCommandInteraction | ButtonI
     }
 
     const inputUrl : string | null = (interaction.isChatInputCommand()) ? interaction.options.getString('url') : interaction.customId;
+    const inputNext : boolean | null =  (interaction.isChatInputCommand()) ? interaction.options.getBoolean('next') : false;
+    const next : boolean = (inputNext) ? true : false;
+    console.log('parameter "next": ', next)
 
     // let regexResult = 0;
     // const youtubeRegex = /^((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube\.com|youtu.be))(\/(?:[\w\-]+\?v=|embed\/|v\/)?)([\w\-]+)(\S+)?$/
@@ -171,7 +174,7 @@ async function addURLToQueue(interaction : ChatInputCommandInteraction | ButtonI
     if(!validUrl){
         const youtubeURLPlaylistInfo = checkIfUrlHasPlaylist(inputUrl)
 
-        //not a playlist, as such will search for using the user input as a query term
+        //not a playlist, as such will search for videos using the user input as a query term
         if(!youtubeURLPlaylistInfo.hasPlaylist || !youtubeURLPlaylistInfo.playlistId){
             const results = await search( inputUrl )
             response.searchVideoList = results.videos.slice(0,5);
@@ -190,16 +193,26 @@ async function addURLToQueue(interaction : ChatInputCommandInteraction | ButtonI
             try {
                 list = await search( { listId: youtubeURLPlaylistInfo.playlistId } )
             } catch (error) {
-                console.log(error)
+                console.log('error retrieving playlist info!')
                 response.message = 'Invalid Playlist /caburro'
+                console.log(response)
                 return response
             }
 
             console.log( 'playlist title: ' + list.title )
-            for (let i = 0; i < list.videos.length; i++) {
-                const video = list.videos[i];
-                const url = 'https://www.youtube.com/watch?v=' + video.videoId;
-                queuedVideos.push({url: url, title: video.title, textChannelId: interaction.channelId, voiceChannel: voiceChannel, guildId: guildId, requestedBy: interaction.member?.user.username!})
+            if(next){   //adding to the top of the queue
+                for(let i = list.videos.length - 1; i >= 0; i--){
+                    const video = list.videos[i];
+                    const url = 'https://www.youtube.com/watch?v=' + video.videoId;
+                    // queuedVideos.unshift({url: url, title: video.title, textChannelId: interaction.channelId, voiceChannel: voiceChannel, guildId: guildId, requestedBy: interaction.member?.user.username!})
+                    queuedVideos.splice(1, 0, {url: url, title: video.title, textChannelId: interaction.channelId, voiceChannel: voiceChannel, guildId: guildId, requestedBy: interaction.member?.user.username!})
+                }
+            }else{  //adding to the bottom of the queue
+                for (let i = 0; i < list.videos.length; i++) {
+                    const video = list.videos[i];
+                    const url = 'https://www.youtube.com/watch?v=' + video.videoId;
+                    queuedVideos.push({url: url, title: video.title, textChannelId: interaction.channelId, voiceChannel: voiceChannel, guildId: guildId, requestedBy: interaction.member?.user.username!})
+                }
             }
             if(list.videos.length > 0){
                 eventEmitter.emit('new video');
@@ -222,7 +235,12 @@ async function addURLToQueue(interaction : ChatInputCommandInteraction | ButtonI
         return response;
     }
 
-    queuedVideos.push({url: url, title: title, textChannelId: interaction.channelId, voiceChannel: voiceChannel, guildId: guildId, requestedBy: interaction.member?.user.username!})
+    const newVideo : YTVideo = {url: url, title: title, textChannelId: interaction.channelId, voiceChannel: voiceChannel, guildId: guildId, requestedBy: interaction.member?.user.username!}
+    if(!next) {queuedVideos.push(newVideo)}
+    else {
+        // queuedVideos.unshift(newVideo)
+        queuedVideos.splice(1, 0, newVideo)
+    }
     eventEmitter.emit('new video');
 
     const numberOfQueuedVideos = (queuedVideos.length - 1)
@@ -283,8 +301,9 @@ async function showQueue (offset : number = 0) : Promise<InteractionReplyOptions
         return {content: 'There are no videos queued.', components: [], embeds: []};
     }
     //offset passed queue length
-    if (offset > auxQueue.length) {
-        return {content: 'There are no videos queued past this point.', components: [], embeds: []};
+    if (offset >= auxQueue.length) {
+        offset = auxQueue.length - 9
+        // return {content: 'There are no videos queued past this point.', components: [], embeds: []};
     }
 
     //not empty queue
@@ -306,7 +325,7 @@ async function showQueue (offset : number = 0) : Promise<InteractionReplyOptions
             embedDescription += (`${i + 1} - **${video.title}** (requested by **${video.requestedBy}**)\n`)
         }
     }
-    const embed = new EmbedBuilder().setColor(0x0099FF).setTitle('Video Queue').setDescription(embedDescription);
+    const embed = new EmbedBuilder().setColor(0x0099FF).setTitle('Video Queue (' + auxQueue.length + ' videos in total)').setDescription(embedDescription);
 
     if (buttonArray.length) {
         const row = new ActionRowBuilder<ButtonBuilder>().addComponents(...buttonArray)
@@ -341,21 +360,23 @@ client.on('interactionCreate', async interaction => {
 	if (!interaction.isChatInputCommand()) return;
 
 	const { commandName } = interaction;
-    const interactionUserId = interaction.member?.user.id;
 
 	if (commandName === 'play') {
-        addURLToQueue(interaction).then( (resposta) => {
-            // console.log('resposta', resposta)
+        await interaction.deferReply();
+        addURLToQueue(interaction).then( async (resposta) => {
+            console.log('resposta', resposta)
             if(!resposta.videoSearch){
-                interaction.reply(resposta.message);
+                console.log('no video search')
+                await interaction.editReply(resposta.message);
+                console.log('end')
                 return
             }else{
                 const videoSearchInteractionReply = videoSearchInteractionBuilder(resposta)
                 if(!videoSearchInteractionReply){
-                    interaction.reply('There was an error processing the video search (input term: ' + interaction.options.getString('url') + ')');
+                    await interaction.editReply('There was an error processing the video search (input term: ' + interaction.options.getString('url') + ')');
                     return
                 }
-                interaction.reply(videoSearchInteractionReply)
+                await interaction.editReply(videoSearchInteractionReply)
                 return
             }
         })
@@ -437,9 +458,11 @@ function registerSlashCommands(clientId: string | undefined, guildId: string, to
     }
 
     const commands = [
-        new SlashCommandBuilder().setName('play').setDescription('Type a youtube URL to play its audio on your current voice channel').
+        new SlashCommandBuilder().setName('play').setDescription('Type a youtube URL (or search term) to play its audio on your current voice channel').
         addStringOption(option =>
-            option.setName('url').setDescription('The Youtube URL (or search term) whose audio will play').setRequired(true)),
+            option.setName('url').setDescription('The Youtube URL (or search term) whose audio will play').setRequired(true)).
+        addBooleanOption(option =>
+            option.setName('next').setDescription('Add this video/playlist to the top of the queue (default: false)').setRequired(false)),
         new SlashCommandBuilder().setName('queue').setDescription('Check queued videos')
         .addNumberOption(option =>
             option.setName('start').setDescription('The starting postion from which the queue will be printed').setRequired(false)),
