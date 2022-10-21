@@ -2,11 +2,10 @@ import fs from 'fs';
 import {EventEmitter} from 'events';
 const eventEmitter = new EventEmitter();
 
-import  {ActionRowBuilder, ChatInputCommandInteraction, ChannelType, REST, SlashCommandBuilder, Routes, Client, Interaction, GuildMember, Channel, TextChannel, EmbedBuilder, ButtonBuilder, ButtonStyle, AnyComponentBuilder, InteractionReplyOptions, APIActionRowComponent, APIMessageActionRowComponent, ButtonInteraction } from 'discord.js';
+import  {ActionRowBuilder, ChatInputCommandInteraction, ChannelType, REST, SlashCommandBuilder, Routes, Client, GuildMember, Channel, TextChannel, EmbedBuilder, ButtonBuilder, ButtonStyle, InteractionReplyOptions, ButtonInteraction } from 'discord.js';
 import {
     AudioPlayer,
 	AudioPlayerStatus,
-	AudioResource,
 	entersState,
 	joinVoiceChannel,
 	VoiceConnectionStatus,
@@ -40,29 +39,37 @@ client.login(token);
 client.on('ready', async function (evt) {
     console.log('Ready!');
 
-    // registerSlashCommands(client.user?.id, nvideaID, token);
+    // registerSlashCommands(client.user?.id, nvideaID!, token);
+    // registerSlashCommands(client.user?.id, tarasManiasID!, token);
 })
 
 client.on('voiceStateUpdate', (oldState, newState) =>{
     console.log('voiceStateUpdate')
-
     const botID = '760202834364334151';
     const serverID = nvideaID
-    if (!serverID) {
+    
+    //someone DC'd
+    if (oldState.channelId && !newState.channelId){
+        if(newState.id === botID){  //bot dc'd
+            console.log('bot disconnected')
+            destroyConnection()
+            return
+        }
+    }
+
+    if (!serverID) {        //check if update happened on the nvidea server
         return
     }
     const botVoiceChannel = client.guilds.cache.get(serverID)?.voiceStates.cache.get(botID)?.channel;
-    if(!botVoiceChannel){
+    if(!botVoiceChannel){   //check if update happened on the same voice channel
         return
     }
     console.log(botVoiceChannel?.members.size);
-    if(botVoiceChannel?.members.size === 1){
-        disconnect()
+    if(botVoiceChannel?.members.size === 1){    //disconnect if left alone
+        connection?.disconnect()
+        // disconnect()
+        return
     }
-    
-    //someone DC'd
-    // if (oldState.channelId && !newState.channelId){
-    // }
 } )
 
 eventEmitter.on('new video', async () => {
@@ -83,7 +90,7 @@ eventEmitter.on('new video', async () => {
             connection.subscribe(player);
         } catch (error) {
             console.log(error)
-            disconnect()
+            connection?.disconnect()
             throw error;
         }
         console.log('play next video (on new video (new connection))')
@@ -99,7 +106,7 @@ eventEmitter.on('new video', async () => {
 
 process.on('exit', () => {
     if(connection){
-        disconnect()
+        connection?.disconnect()
     }
 })
 
@@ -200,7 +207,6 @@ async function addURLToQueue(interaction : ChatInputCommandInteraction | ButtonI
             response.message = 'Playlist added to queue (' + list.title + ' - **'+ list.videos.length +' videos added**).'
             return response;
         }
-
     }
 
     const videoId = getURLVideoID(inputUrl);
@@ -261,30 +267,52 @@ async function playNextVideo (){
     }
 }
 
-function disconnect(){
-    console.log('disconnecting...')
-    player.stop()
-    player.removeAllListeners();
+function destroyConnection(){
+    console.log('destroying connection...')
+    player?.stop()
+    player?.removeAllListeners();
     queuedVideos = [];
     connection?.destroy()
 }
 
-async function showQueue (){
+async function showQueue (offset : number = 0) : Promise<InteractionReplyOptions>{
+    console.log('offset: ', offset)
     const auxQueue = queuedVideos.slice(1)
+    //empty queue
     if(!auxQueue.length){
-        return 'There are no videos queued.'
+        return {content: 'There are no videos queued.', components: [], embeds: []};
     }
-    let returnString = ''
-    for (let i = 0; i < auxQueue.length && i <= 10; i++) {
-        if(i === 10){
-            returnString += "..."
+    //offset passed queue length
+    if (offset > auxQueue.length) {
+        return {content: 'There are no videos queued past this point.', components: [], embeds: []};
+    }
+
+    //not empty queue
+    let embedDescription = ''
+    let buttonArray: ButtonBuilder[] = [];
+
+    //check previous queue button
+    if (offset > 0) {
+        const newOffset : number = (offset < 10) ? 0 : offset - 10
+        buttonArray.push(new ButtonBuilder().setCustomId(newOffset + "").setLabel('Previous page').setStyle(ButtonStyle.Primary))
+    }
+
+    for (let i = offset; i < auxQueue.length && i <= (offset + 10); i++) {
+        if(i === offset + 10){
+            buttonArray.push(new ButtonBuilder().setCustomId((offset + 10) + "").setLabel('Next page').setStyle(ButtonStyle.Primary))
         }else{
             const video = auxQueue[i];
             // console.log(queuedVideos)
-            returnString += (`${i + 1} - **${video.title}** (requested by **${video.requestedBy}**)\n`)
+            embedDescription += (`${i + 1} - **${video.title}** (requested by **${video.requestedBy}**)\n`)
         }
     }
-    return returnString
+    const embed = new EmbedBuilder().setColor(0x0099FF).setTitle('Video Queue').setDescription(embedDescription);
+
+    if (buttonArray.length) {
+        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(...buttonArray)
+        return {embeds: [embed], components: [row]}
+    }
+    return {embeds: [embed]}
 }
 
 client.on('interactionCreate', async interaction => {
@@ -293,11 +321,20 @@ client.on('interactionCreate', async interaction => {
 
     // In case a video is searched and selected though the embed buttons
     if (interaction.isButton()){
-        addURLToQueue(interaction).then( (resposta) => {
-            if(!resposta.videoSearch){
-                interaction.update({ content: resposta.message, components: [], embeds: [] });
-            }
-        });
+        const queueOffset = Number(interaction.customId)
+
+        if(isNaN(queueOffset)){     //interaction.customId = youtube video ID search result
+            addURLToQueue(interaction).then( (resposta) => {
+                if(!resposta.videoSearch){
+                    interaction.update({ content: resposta.message, components: [], embeds: [] });
+                }
+            });
+        }else{                      //interaction.customId = showQueue offset 
+            showQueue(queueOffset).then((reply) => {
+                interaction.update({embeds: reply.embeds, components: reply.components, content: reply.content})
+            })
+            
+        }
         return;
     } 
 
@@ -324,12 +361,10 @@ client.on('interactionCreate', async interaction => {
         })
         return;
 	} else if (commandName === 'queue') {
-		showQueue().then( (resposta) => {
-            console.log('resposta', resposta)
-
-            const embed = new EmbedBuilder().setColor(0x0099FF).setTitle('Video Queue').setDescription(resposta);
-
-            interaction.reply({ephemeral: false, embeds: [embed] });
+        const inputStart = interaction.options.getNumber('start')
+        const start = inputStart ? (inputStart - 1) : 0
+		showQueue(start).then( (reply) => {
+            interaction.reply(reply);
         })
 	} else if (commandName === 'clear') {
         queuedVideos.splice(1);
@@ -348,7 +383,8 @@ client.on('interactionCreate', async interaction => {
         interaction.reply('Skipping to next track... ⏭');
         return;
     } else if (commandName === 'disconnect') {
-        disconnect()
+        // disconnect()
+        connection?.disconnect()
         interaction.reply('Disconnecting... 👋');
         return;
     }
@@ -403,8 +439,10 @@ function registerSlashCommands(clientId: string | undefined, guildId: string, to
     const commands = [
         new SlashCommandBuilder().setName('play').setDescription('Type a youtube URL to play its audio on your current voice channel').
         addStringOption(option =>
-            option.setName('url').setDescription('The URL whose audio will play').setRequired(true)),
-        new SlashCommandBuilder().setName('queue').setDescription('Check queued videos'),
+            option.setName('url').setDescription('The Youtube URL (or search term) whose audio will play').setRequired(true)),
+        new SlashCommandBuilder().setName('queue').setDescription('Check queued videos')
+        .addNumberOption(option =>
+            option.setName('start').setDescription('The starting postion from which the queue will be printed').setRequired(false)),
         new SlashCommandBuilder().setName('clear').setDescription('Clear').
         addSubcommand(subcommand =>
             subcommand.setName('queue').setDescription('Clear the current video queue')),
