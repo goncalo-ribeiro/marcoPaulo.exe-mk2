@@ -2,7 +2,7 @@ import fs from 'fs';
 import {EventEmitter} from 'events';
 const eventEmitter = new EventEmitter();
 
-import  {ActionRowBuilder, ChatInputCommandInteraction, ChannelType, REST, SlashCommandBuilder, Routes, Client, GuildMember, Channel, TextChannel, EmbedBuilder, ButtonBuilder, ButtonStyle, InteractionReplyOptions, ButtonInteraction } from 'discord.js';
+import  {ActionRowBuilder, ChatInputCommandInteraction, ChannelType, REST, SlashCommandBuilder, Routes, Client, GuildMember, Channel, TextChannel, EmbedBuilder, ButtonBuilder, ButtonStyle, InteractionReplyOptions, ButtonInteraction, VoiceBasedChannel } from 'discord.js';
 import {
     AudioPlayer,
 	AudioPlayerStatus,
@@ -16,16 +16,18 @@ import {validateURL, getURLVideoID, getBasicInfo} from 'ytdl-core';
 import { exec as ytdl } from 'youtube-dl-exec';
 import {PlaylistMetadataResult, search} from 'yt-search'
 
-let token, nvideaID : string | undefined, tarasManiasID : string | undefined ;
+let token : string | undefined, nvideaID : string | undefined, tarasManiasID : string | undefined, gandiniFunClubID : string | undefined;
 try {
     const auth = require('../auth.json');
     token = auth.token;
     nvideaID = auth.nvideaID;
     tarasManiasID = auth.tarasManiasID;
+    gandiniFunClubID = auth.gandiniFunClubID;
 } catch (error) {
     token = process.env.token;
     nvideaID = process.env.nvideaID;
     tarasManiasID = process.env.tarasManiasID;
+    gandiniFunClubID = process.env.gandiniFunClubID;
 }
 
 let player : AudioPlayer;
@@ -41,6 +43,7 @@ client.on('ready', async function (evt) {
 
     // registerSlashCommands(client.user?.id, nvideaID!, token);
     // registerSlashCommands(client.user?.id, tarasManiasID!, token);
+    registerSlashCommands(client.user?.id, gandiniFunClubID!, token!);
 })
 
 client.on('voiceStateUpdate', (oldState, newState) =>{
@@ -57,10 +60,13 @@ client.on('voiceStateUpdate', (oldState, newState) =>{
         }
     }
 
-    if (!serverID) {        //check if update happened on the nvidea server
+    if (!(nvideaID && gandiniFunClubID)) {        //check if update happened on the nvidea server
         return
     }
-    const botVoiceChannel = client.guilds.cache.get(serverID)?.voiceStates.cache.get(botID)?.channel;
+    const nvideaVoiceChannel = client.guilds.cache.get(nvideaID)?.voiceStates.cache.get(botID)?.channel;
+    const gandiniFunClubVoiceChannel = client.guilds.cache.get(gandiniFunClubID)?.voiceStates.cache.get(botID)?.channel;
+    let botVoiceChannel = (nvideaVoiceChannel ? nvideaVoiceChannel : gandiniFunClubVoiceChannel)
+    console.log(botVoiceChannel)
     if(!botVoiceChannel){   //check if update happened on the same voice channel
         return
     }
