@@ -66,11 +66,11 @@ client.on('voiceStateUpdate', (oldState, newState) =>{
     const nvideaVoiceChannel = client.guilds.cache.get(nvideaID)?.voiceStates.cache.get(botID)?.channel;
     const gandiniFunClubVoiceChannel = client.guilds.cache.get(gandiniFunClubID)?.voiceStates.cache.get(botID)?.channel;
     let botVoiceChannel = (nvideaVoiceChannel ? nvideaVoiceChannel : gandiniFunClubVoiceChannel)
-    console.log(botVoiceChannel)
+    //console.log(botVoiceChannel)
     if(!botVoiceChannel){   //check if update happened on the same voice channel
         return
     }
-    console.log(botVoiceChannel?.members.size);
+    console.log('voice channel size: ' + botVoiceChannel?.members.size);
     if(botVoiceChannel?.members.size === 1){    //disconnect if left alone
         connection?.disconnect()
         // disconnect()
@@ -339,7 +339,7 @@ async function showQueue (offset : number = 0) : Promise<InteractionReplyOptions
 
 client.on('interactionCreate', async interaction => {
     console.log('new interaction!')
-    // console.log(interaction)
+    //console.log(interaction)
 
     // In case a video is searched and selected though the embed buttons
     if (interaction.isButton()){
@@ -363,11 +363,12 @@ client.on('interactionCreate', async interaction => {
 	if (!interaction.isChatInputCommand()) return;
 
 	const { commandName } = interaction;
+    console.log(commandName)
 
 	if (commandName === 'play') {
         await interaction.deferReply();
         addURLToQueue(interaction).then( async (resposta) => {
-            console.log('resposta', resposta)
+            //console.log('resposta', resposta)
             if(!resposta.videoSearch){
                 console.log('no video search')
                 await interaction.editReply(resposta.message);
