@@ -24,3 +24,8 @@ export interface YoutubeURLPlaylistInfo{
 	hasPlaylist: boolean
 	playlistId? : string
 }
+
+export interface ShuffleResponse{
+	shuffled: boolean
+	reply: string
+}

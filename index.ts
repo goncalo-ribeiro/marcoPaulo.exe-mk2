@@ -11,7 +11,7 @@ import {
 	VoiceConnectionStatus,
     StreamType, createAudioPlayer, createAudioResource, getVoiceConnection, VoiceConnection, demuxProbe,
 } from '@discordjs/voice';
-import {YTVideo, AddYoutubeVideoResponse, YoutubeURLPlaylistInfo} from './types';
+import {YTVideo, AddYoutubeVideoResponse, YoutubeURLPlaylistInfo, ShuffleResponse} from './types';
 import {validateURL, getURLVideoID, getBasicInfo} from 'ytdl-core';
 import { exec as ytdl } from 'youtube-dl-exec';
 import {PlaylistMetadataResult, search} from 'yt-search'
@@ -41,9 +41,9 @@ client.login(token);
 client.on('ready', async function (evt) {
     console.log('Ready!');
 
-    // registerSlashCommands(client.user?.id, nvideaID!, token);
-    // registerSlashCommands(client.user?.id, tarasManiasID!, token);
-    registerSlashCommands(client.user?.id, gandiniFunClubID!, token!);
+    // registerSlashCommands(client.user?.id, nvideaID!, token!);
+    // registerSlashCommands(client.user?.id, tarasManiasID!, token!);
+    // registerSlashCommands(client.user?.id, gandiniFunClubID!, token!);
 })
 
 client.on('voiceStateUpdate', (oldState, newState) =>{
@@ -337,6 +337,14 @@ async function showQueue (offset : number = 0) : Promise<InteractionReplyOptions
     return {embeds: [embed]}
 }
 
+function shuffleQueue() : ShuffleResponse {
+    if (queuedVideos.length > 0){
+        shuffle(queuedVideos)
+        return{shuffled: true, reply: 'The queue was shuffled 👍 Showing the first ten videos:'}
+    }
+    return{shuffled: false, reply: 'There are no videos queued 😳'}
+}
+
 client.on('interactionCreate', async interaction => {
     console.log('new interaction!')
     //console.log(interaction)
@@ -412,7 +420,19 @@ client.on('interactionCreate', async interaction => {
         connection?.disconnect()
         interaction.reply('Disconnecting... 👋');
         return;
-    }
+    }else if (commandName === 'shuffle') {
+        await interaction.deferReply();
+        await interaction.editReply('Shuffling current queue...');
+        const shuffleResponse = shuffleQueue()
+        await interaction.editReply(shuffleResponse.reply);
+        if(shuffleResponse.shuffled){
+            showQueue(0).then( async (reply) => {
+                await interaction.followUp(reply);
+                // interaction.reply(reply);
+            })
+        }
+        return;
+    } 
 
 });
 
@@ -476,7 +496,8 @@ function registerSlashCommands(clientId: string | undefined, guildId: string, to
         new SlashCommandBuilder().setName('pause').setDescription('Pause current video'),
         new SlashCommandBuilder().setName('resume').setDescription('Resume current video'),
         new SlashCommandBuilder().setName('skip').setDescription('Skip current video'),
-        new SlashCommandBuilder().setName('disconnect').setDescription('Disconnect Bot, clear queue')
+        new SlashCommandBuilder().setName('disconnect').setDescription('Disconnect Bot, clear queue'),
+        new SlashCommandBuilder().setName('shuffle').setDescription('Shuffle current queue')
     ]
 
     .map(command => command.toJSON());
@@ -488,3 +509,21 @@ function registerSlashCommands(clientId: string | undefined, guildId: string, to
         .then((data) => console.log(`Successfully registered application commands.`))
         .catch(console.error);
 }
+
+function shuffle<T>(array: T[]) {
+    let currentIndex = array.length,  randomIndex;
+  
+    // While there remain elements to shuffle.
+    while (currentIndex != 0) {
+  
+      // Pick a remaining element.
+      randomIndex = Math.floor(Math.random() * currentIndex);
+      currentIndex--;
+  
+      // And swap it with the current element.
+      [array[currentIndex], array[randomIndex]] = [
+        array[randomIndex], array[currentIndex]];
+    }
+  
+    return array;
+  }
